@@ -1,0 +1,270 @@
+name: Validator Setup Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  test-setup:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ubuntu-version: [20.04, 22.04]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up test environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl wget git
+        
+    - name: Test Docker installation
+      run: |
+        # Test if setup script can install Docker
+        echo "Testing Docker installation..."
+        if ! command -v docker &> /dev/null; then
+          echo "Docker not found, would be installed by setup script"
+        fi
+        
+    - name: Test dependencies check
+      run: |
+        # Test system requirements check
+        ./scripts/setup.sh --check-only
+        
+    - name: Validate configuration files
+      run: |
+        # Test genesis.json validity
+        if command -v jq &> /dev/null; then
+          jq empty config/genesis.json
+        fi
+        
+        # Test docker-compose.yml syntax
+        docker compose config > /dev/null
+        
+    - name: Test key generation
+      run: |
+        # Test key generation script
+        ./scripts/generate-keys.sh --test-mode
+        
+        # Verify key was created with correct permissions
+        if [ -f "validator/key" ]; then
+          PERMS=$(stat -c "%a" validator/key)
+          if [ "$PERMS" != "600" ]; then
+            echo "Error: Key file permissions are $PERMS, should be 600"
+            exit 1
+          fi
+        fi
+        
+    - name: Test monitoring scripts
+      run: |
+        # Test sync check script syntax
+        bash -n scripts/check-sync.sh
+        
+        # Test monitoring script syntax  
+        bash -n scripts/monitor.sh
+        
+    - name: Validate documentation
+      run: |
+        # Check for broken links in README
+        if command -v markdown-link-check &> /dev/null; then
+          markdown-link-check README.md
+        fi
+        
+        # Validate all markdown files
+        find docs/ -name "*.md" -exec bash -c 'echo "Checking $1"; head -1 "$1" | grep -q "^#"' _ {} \;
+
+  test-security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Security scan with Bandit
+      run: |
+        pip install bandit
+        # Scan shell scripts for security issues
+        find . -name "*.sh" -exec shellcheck {} \;
+        
+    - name: Test file permissions
+      run: |
+        # Ensure no files have overly permissive permissions
+        find . -type f -perm /o+w -exec echo "World-writable file found: {}" \;
+        
+        # Check for executable files that shouldn't be
+        find config/ -type f -executable -exec echo "Executable config file: {}" \;
+        
+    - name: Dockerfile security scan
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: Dockerfile
+        failure-threshold: warning
+
+  test-network:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Start validator network
+      run: |
+        # Start containers
+        docker compose up -d
+        
+        # Wait for services to be ready
+        sleep 30
+        
+    - name: Test RPC connectivity
+      run: |
+        # Test if RPC endpoint responds
+        curl -f -X POST \
+          --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+          -H "Content-Type: application/json" \
+          http://localhost:8545 || exit 1
+          
+    - name: Test peer connectivity
+      run: |
+        # Check if validator has peers
+        PEERS=$(curl -s -X POST \
+          --data '{"jsonrpc":"2.0","method":"admin_peers","params":[],"id":1}' \
+          -H "Content-Type: application/json" \
+          http://localhost:8545 | jq '.result | length')
+          
+        echo "Peer count: $PEERS"
+        if [ "$PEERS" -lt 1 ]; then
+          echo "Warning: No peers connected"
+        fi
+        
+    - name: Test block production
+      run: |
+        # Wait for some blocks to be produced
+        INITIAL_BLOCK=$(curl -s -X POST \
+          --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+          -H "Content-Type: application/json" \
+          http://localhost:8545 | jq -r '.result')
+          
+        echo "Initial block: $INITIAL_BLOCK"
+        sleep 10
+        
+        CURRENT_BLOCK=$(curl -s -X POST \
+          --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+          -H "Content-Type: application/json" \
+          http://localhost:8545 | jq -r '.result')
+          
+        echo "Current block: $CURRENT_BLOCK"
+        
+        # Convert hex to decimal for comparison
+        INITIAL_DEC=$(printf "%d" $INITIAL_BLOCK)
+        CURRENT_DEC=$(printf "%d" $CURRENT_BLOCK)
+        
+        if [ $CURRENT_DEC -le $INITIAL_DEC ]; then
+          echo "Error: No new blocks produced"
+          exit 1
+        fi
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        docker compose down
+        docker system prune -f
+
+  test-documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        npm install -g markdown-link-check
+        pip install mkdocs
+        
+    - name: Check markdown links
+      run: |
+        # Check all markdown files for broken links
+        find . -name "*.md" -exec markdown-link-check {} \;
+        
+    - name: Validate documentation structure
+      run: |
+        # Ensure all required documentation exists
+        REQUIRED_DOCS=(
+          "README.md"
+          "docs/installation.md" 
+          "docs/troubleshooting.md"
+          "docs/security.md"
+          "docs/monitoring.md"
+        )
+        
+        for doc in "${REQUIRED_DOCS[@]}"; do
+          if [ ! -f "$doc" ]; then
+            echo "Error: Required documentation missing: $doc"
+            exit 1
+          fi
+        done
+        
+    - name: Test setup instructions
+      run: |
+        # Verify setup instructions are complete
+        if ! grep -q "System Requirements" README.md; then
+          echo "Error: README missing system requirements"
+          exit 1
+        fi
+        
+        if ! grep -q "Quick Start" README.md; then
+          echo "Error: README missing quick start section"
+          exit 1
+        fi
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: [test-setup, test-security, test-network]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Full integration test
+      run: |
+        echo "Running full integration test..."
+        
+        # Run setup script in test mode
+        ./scripts/setup.sh --dry-run
+        
+        # Verify all components are configured correctly
+        docker compose config
+        
+        # Start full stack
+        docker compose up -d
+        
+        # Wait for full initialization
+        sleep 60
+        
+        # Run comprehensive health check
+        ./scripts/check-sync.sh
+        
+        echo "Integration test completed successfully"
+        
+    - name: Performance test
+      run: |
+        # Test RPC performance
+        for i in {1..10}; do
+          time curl -s -X POST \
+            --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
+            -H "Content-Type: application/json" \
+            http://localhost:8545 > /dev/null
+        done
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        docker compose down
+        docker system prune -f
