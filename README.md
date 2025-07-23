@@ -132,8 +132,8 @@ curl -s http://localhost:8545 -X POST -H "Content-Type: application/json" \
 - Compliance and regulatory guidance
 
 ### 📞 Contact Information
-- **Enterprise Sales**: enterprise@bitflex.com
-- **Technical Support**: support@bitflex.com
+- **Enterprise Sales**: enterprise@yochain.club
+- **Technical Support**: support@yochain.club
 - **Documentation**: [docs.yo-network.com](https://docs.yo-network.com)
 - **Community**: [Discord](https://discord.gg/yo-network) | [Telegram](https://t.me/yo-network)
 
@@ -152,12 +152,12 @@ This software is provided under the MIT License. For enterprise deployments, ple
 
 <div align="center">
 
-**© 2025 BitFlex LLC. All rights reserved.**
+**© 2025 YO India. All rights reserved.**
 
 *Building the infrastructure for tomorrow's financial systems*
 
 [![GitHub](https://img.shields.io/badge/GitHub-bitflex--llc-black?style=flat&logo=github)](https://github.com/bitflex-llc)
-[![Website](https://img.shields.io/badge/Website-bitflex.com-blue?style=flat&logo=globe)](https://bitflex.com)
+[![Website](https://img.shields.io/badge/Website-yochain.club-blue?style=flat&logo=globe)](https://yochain.club)
 
 </div>
 ```
