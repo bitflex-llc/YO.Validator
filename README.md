@@ -31,7 +31,7 @@
 | **Chain ID** | 2025 |
 | **Consensus Algorithm** | IBFT 2.0 (Istanbul Byzantine Fault Tolerance) |
 | **Block Time** | 2 seconds |
-| **Native Currency** | ETH |
+| **Native Currency** | YO |
 | **Explorer** | [https://yo-bs.bcflex.com](https://yo-bs.bcflex.com) |
 | **RPC Endpoint** | [https://yo-rpc.bcflex.com](https://yo-rpc.bcflex.com) |
 | **Network Status** | 🟢 Live |
